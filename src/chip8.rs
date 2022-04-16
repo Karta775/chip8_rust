@@ -1,15 +1,15 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use log::{debug, error, info, warn};
+use log::{trace, debug, error, warn};
 use std::fs::File;
 use std::io::Read;
 use std::fs;
 
 const PIXEL_COUNT: usize = 32 * 64 * 3;
 
-fn op_info(pc: usize, opcode: u16, instruction: &str, description: &str) {
-    info!("I ({:#04x}) {:04X} | {} - {}", pc - 2, opcode, instruction, description);
+fn op_implemented(pc: usize, opcode: u16, instruction: &str, description: &str) {
+    debug!("I ({:#04x}) {:04X} | {} - {}", pc - 2, opcode, instruction, description);
 }
 
 fn op_unimplemented(pc: usize, opcode: u16, instruction: &str, description: &str) {
@@ -52,7 +52,7 @@ pub struct Chip8 {
 
 impl Chip8 {
     pub fn new() -> Chip8 {
-        debug!("Resetting the CPU");
+        trace!("Resetting the CPU");
         Chip8 {
             pc: 0x200,
             memory: [0; 4096],
@@ -67,11 +67,11 @@ impl Chip8 {
     }
 
     pub fn load_rom(&mut self, filename: &str) {
-        debug!("Loading ROM file '{}'", filename);
+        trace!("Loading ROM file '{}'", filename);
         let mut file = File::open(&filename).expect("File doesn't exist");
         let metadata = fs::metadata(&filename).expect("Unable to read metadata");
         let filesize = metadata.len() as usize;
-        debug!("ROM file size is {} bytes", filesize);
+        trace!("ROM file size is {} bytes", filesize);
         let start = 0x200;
         let end = start + filesize;
         file.read_exact(&mut self.memory[start..end]).expect("Buffer overflow");
@@ -85,7 +85,7 @@ impl Chip8 {
     }
 
     pub fn fetch(&mut self) -> Opcode {
-        debug!("Fetching the next opcode at {:#04x}", self.pc);
+        trace!("Fetching the next opcode at {:#04x}", self.pc);
         let left = self.memory[self.pc] as u16;
         let right = self.memory[self.pc + 1] as u16;
         Opcode::new(left << 8 | right)
@@ -161,20 +161,20 @@ impl Chip8 {
         op_unimplemented(self.pc, 0x00EE, "00EE", "Returns from a subroutine.");
     }
     fn op_1nnn(&mut self, opcode: &Opcode) {
-        op_info(self.pc, opcode.code, "1NNN", "Jumps to address NNN.");
+        op_implemented(self.pc, opcode.code, "1NNN", "Jumps to address NNN.");
         self.pc = opcode.nnn as usize;
     }
     fn op_2nnn(&mut self, opcode: &Opcode) {
         op_unimplemented(self.pc, opcode.code, "2NNN", "Calls subroutine at NNN.");
     }
     fn op_3xnn(&mut self, opcode: &Opcode) {
-        op_info(self.pc, opcode.code, "3XNN", "Skips the next instruction if VX equals NN. (Usually the next instruction is a jump to skip a code block)");
+        op_implemented(self.pc, opcode.code, "3XNN", "Skips the next instruction if VX equals NN. (Usually the next instruction is a jump to skip a code block)");
         if self.reg[opcode.x] == opcode.nn {
             self.pc += 2;
         }
     }
     fn op_4xnn(&mut self, opcode: &Opcode) {
-        op_info(self.pc, opcode.code, "4NNN", "Skips the next instruction if VX does not equal NN. (Usually the next instruction is a jump to skip a code block);");
+        op_implemented(self.pc, opcode.code, "4NNN", "Skips the next instruction if VX does not equal NN. (Usually the next instruction is a jump to skip a code block);");
         if self.reg[opcode.x] != opcode.nn {
             self.pc += 2;
         }
@@ -183,11 +183,11 @@ impl Chip8 {
         op_unimplemented(self.pc, opcode.code, "5XY0", "Skips the next instruction if VX equals VY. (Usually the next instruction is a jump to skip a code block);");
     }
     fn op_6xnn(&mut self, opcode: &Opcode) {
-        op_info(self.pc, opcode.code, "6XNN", "Sets VX to NN.");
+        op_implemented(self.pc, opcode.code, "6XNN", "Sets VX to NN.");
         self.reg[opcode.x] = opcode.nn;
     }
     fn op_7xnn(&mut self, opcode: &Opcode) {
-        op_info(self.pc, opcode.code, "7XNN", "Adds NN to VX. (Carry flag is not changed);");
+        op_implemented(self.pc, opcode.code, "7XNN", "Adds NN to VX. (Carry flag is not changed);");
         self.reg[opcode.x] = self.reg[opcode.x].wrapping_add(opcode.nn);
     }
     fn op_8xy0(&mut self, opcode: &Opcode) {
@@ -197,7 +197,7 @@ impl Chip8 {
         op_unimplemented(self.pc, opcode.code, "8XY1", "Sets VX to VX or VY. (Bitwise OR operation);");
     }
     fn op_8xy2(&mut self, opcode: &Opcode) {
-        op_info(self.pc, opcode.code, "8XY2", "Sets VX to VX and VY. (Bitwise AND operation);");
+        op_implemented(self.pc, opcode.code, "8XY2", "Sets VX to VX and VY. (Bitwise AND operation);");
         self.reg[opcode.x] &= self.reg[opcode.y];
     }
     fn op_8xy3(&mut self, opcode: &Opcode) {
@@ -222,7 +222,7 @@ impl Chip8 {
         op_unimplemented(self.pc, opcode.code, "9XY0", "Skips the next instruction if VX does not equal VY. (Usually the next instruction is a jump to skip a code block);");
     }
     fn op_annn(&mut self, opcode: &Opcode) {
-        op_info(self.pc, opcode.code, "ANNN", "Sets I to the address NNN.");
+        op_implemented(self.pc, opcode.code, "ANNN", "Sets I to the address NNN.");
         self.reg_i = opcode.nnn;
     }
     fn op_bnnn(&mut self, opcode: &Opcode) {
@@ -241,7 +241,7 @@ impl Chip8 {
         op_unimplemented(self.pc, opcode.code, "EXA1", "Skips the next instruction if the key stored in VX is not pressed. (Usually the next instruction is a jump to skip a code block);");
     }
     fn op_fx07(&mut self, opcode: &Opcode) {
-        op_info(self.pc, opcode.code, "FX07", "Sets VX to the value of the delay timer.");
+        op_implemented(self.pc, opcode.code, "FX07", "Sets VX to the value of the delay timer.");
         self.reg[opcode.x] = self.delay_timer;
     }
     fn op_fx0a(&mut self, opcode: &Opcode) {
