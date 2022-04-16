@@ -180,7 +180,10 @@ impl Chip8 {
         }
     }
     fn op_5xy0(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "5XY0", "Skips the next instruction if VX equals VY. (Usually the next instruction is a jump to skip a code block);");
+        op_implemented(self.pc, opcode.code, "5XY0", "Skips the next instruction if VX equals VY. (Usually the next instruction is a jump to skip a code block);");
+        if self.reg[opcode.x] == self.reg[opcode.y] {
+            self.pc += 2;
+        }
     }
     fn op_6xnn(&mut self, opcode: &Opcode) {
         op_implemented(self.pc, opcode.code, "6XNN", "Sets VX to NN.");
@@ -204,7 +207,12 @@ impl Chip8 {
         op_unimplemented(self.pc, opcode.code, "8XY3", "Sets VX to VX xor VY.");
     }
     fn op_8xy4(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "8XY4", "Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there is not.");
+        op_implemented(self.pc, opcode.code, "8XY4", "Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there is not.");
+        let vx = self.reg[opcode.x];
+        let vy = self.reg[opcode.y];
+        let (result, carry) = vx.overflowing_add(vy);
+        self.reg[opcode.x] = result;
+        self.reg[0xF] = carry as u8;
     }
     fn op_8xy5(&mut self, opcode: &Opcode) {
         op_unimplemented(self.pc, opcode.code, "8XY5", "VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there is not.");
@@ -248,7 +256,8 @@ impl Chip8 {
         op_unimplemented(self.pc, opcode.code, "FX0A", "A key press is awaited, and then stored in VX. (Blocking Operation. All instruction halted until next key event);");
     }
     fn op_fx15(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "FX15", "Sets the delay timer to VX.");
+        op_implemented(self.pc, opcode.code, "FX15", "Sets the delay timer to VX.");
+        self.delay_timer = self.reg[opcode.x];
     }
     fn op_fx18(&mut self, opcode: &Opcode) {
         op_unimplemented(self.pc, opcode.code, "FX18", "Sets the sound timer to VX.");
@@ -308,15 +317,6 @@ mod tests {
     }
 
     #[test]
-    fn test_op_3xnn_no_skip() {
-        let mut chip8 = Chip8::new();
-        chip8.load_vec(vec![0x3AFF, 0x0000, 0x1111]);
-        chip8.reg[0xA] = 0xF0;
-        chip8.tick();
-        assert_ne!(chip8.pc, 0x204);
-    }
-
-    #[test]
     fn test_op_3xnn_skip() {
         let mut chip8 = Chip8::new();
         chip8.load_vec(vec![0x3AFF, 0x0000, 0x1111]);
@@ -326,10 +326,10 @@ mod tests {
     }
 
     #[test]
-    fn test_op_4xnn_no_skip() {
+    fn test_op_3xnn_no_skip() {
         let mut chip8 = Chip8::new();
-        chip8.load_vec(vec![0x4AFF, 0x0000, 0x1111]);
-        chip8.reg[0xA] = 0xFF;
+        chip8.load_vec(vec![0x3AFF, 0x0000, 0x1111]);
+        chip8.reg[0xA] = 0xF0;
         chip8.tick();
         assert_ne!(chip8.pc, 0x204);
     }
@@ -337,10 +337,39 @@ mod tests {
     #[test]
     fn test_op_4xnn_skip() {
         let mut chip8 = Chip8::new();
-        chip8.load_vec(vec![0x4AFF, 0x0000, 0x1111]);
+        chip8.load_vec(vec![0x4AFF]);
         chip8.reg[0xA] = 0xF0;
         chip8.tick();
         assert_eq!(chip8.pc, 0x204);
+    }
+
+    #[test]
+    fn test_op_4xnn_no_skip() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x4AFF]);
+        chip8.reg[0xA] = 0xFF;
+        chip8.tick();
+        assert_ne!(chip8.pc, 0x204);
+    }
+
+    #[test]
+    fn test_op_5xy0_skip() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x5AB0]);
+        chip8.reg[0xA] = 0xF0;
+        chip8.reg[0xB] = 0xF0;
+        chip8.tick();
+        assert_eq!(chip8.pc, 0x204);
+    }
+
+    #[test]
+    fn test_op_5xy0_no_skip() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x5AB0]);
+        chip8.reg[0xA] = 0x0F;
+        chip8.reg[0xB] = 0xF0;
+        chip8.tick();
+        assert_ne!(chip8.pc, 0x204);
     }
 
     #[test]
@@ -349,15 +378,6 @@ mod tests {
         chip8.load_vec(vec![0x6A45]);
         chip8.tick();
         assert_eq!(chip8.reg[0xA], 0x45);
-    }
-
-    #[test]
-    fn test_op_7xnn_no_wrap() {
-        let mut chip8 = Chip8::new();
-        chip8.load_vec(vec![0x7A10]);
-        chip8.reg[0xA] = 0x0F;
-        chip8.tick();
-        assert_eq!(chip8.reg[0xA], 0x0F + 0x10);
     }
 
     #[test]
@@ -371,6 +391,15 @@ mod tests {
     }
 
     #[test]
+    fn test_op_7xnn_no_wrap() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x7A10]);
+        chip8.reg[0xA] = 0x0F;
+        chip8.tick();
+        assert_eq!(chip8.reg[0xA], 0x0F + 0x10);
+    }
+
+    #[test]
     fn test_op_8xy2() {
         let mut chip8 = Chip8::new();
         chip8.load_vec(vec![0x8AB2]);
@@ -379,6 +408,30 @@ mod tests {
         chip8.tick();
         assert_eq!(chip8.reg[0xA], 0b00111100);
         assert_eq!(chip8.reg[0xB], 0b00111111);
+    }
+
+    #[test]
+    fn test_op_8xy4_carry() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x8AB4]);
+        chip8.reg[0xA] = 255;
+        chip8.reg[0xB] = 7;
+        chip8.tick();
+        assert_eq!(chip8.reg[0xA], 6);
+        assert_eq!(chip8.reg[0xB], 7);
+        assert_eq!(chip8.reg[0xF], 1)
+    }
+
+    #[test]
+    fn test_op_8xy4_no_carry() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x8AB4]);
+        chip8.reg[0xA] = 2;
+        chip8.reg[0xB] = 5;
+        chip8.tick();
+        assert_eq!(chip8.reg[0xA], 7);
+        assert_eq!(chip8.reg[0xB], 5);
+        assert_eq!(chip8.reg[0xF], 0)
     }
 
     #[test]
@@ -395,5 +448,14 @@ mod tests {
         chip8.load_vec(vec![0xF207]);
         chip8.tick();
         assert_eq!(chip8.reg[2], chip8.delay_timer);
+    }
+
+    #[test]
+    fn test_op_fx15() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0xFA15]);
+        chip8.reg[0xA] = 57;
+        chip8.tick();
+        assert_eq!(chip8.delay_timer, 57);
     }
 }
