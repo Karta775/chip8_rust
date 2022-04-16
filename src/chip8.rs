@@ -174,7 +174,10 @@ impl Chip8 {
         }
     }
     fn op_4xnn(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "4NNN", "Skips the next instruction if VX does not equal NN. (Usually the next instruction is a jump to skip a code block);");
+        op_info(self.pc, opcode.code, "4NNN", "Skips the next instruction if VX does not equal NN. (Usually the next instruction is a jump to skip a code block);");
+        if self.reg[opcode.x as usize] != opcode.nn {
+            self.pc += 2;
+        }
     }
     fn op_5xy0(&mut self, opcode: &Opcode) {
         op_unimplemented(self.pc, opcode.code, "5XY0", "Skips the next instruction if VX equals VY. (Usually the next instruction is a jump to skip a code block);");
@@ -310,6 +313,24 @@ mod tests {
     }
 
     #[test]
+    fn test_op_4xnn_no_skip() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x4AFF, 0x0000, 0x1111]);
+        chip8.reg[0xA] = 0xFF;
+        chip8.tick();
+        assert_ne!(chip8.pc, 0x204);
+    }
+
+    #[test]
+    fn test_op_4xnn_skip() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x4AFF, 0x0000, 0x1111]);
+        chip8.reg[0xA] = 0xF0;
+        chip8.tick();
+        assert_eq!(chip8.pc, 0x204);
+    }
+
+    #[test]
     fn test_op_3xnn_no_skip() {
         let mut chip8 = Chip8::new();
         chip8.load_vec(vec![0x3AFF, 0x0000, 0x1111]);
@@ -317,6 +338,8 @@ mod tests {
         chip8.tick();
         assert_ne!(chip8.pc, 0x204);
     }
+
+
 
     #[test]
     fn test_op_fx07() {
