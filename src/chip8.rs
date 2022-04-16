@@ -20,9 +20,9 @@ pub struct Opcode {
     pub code: u16,
     pub nnn: u16,
     pub nn: u8,
-    pub n: u8,
-    pub x: u8,
-    pub y: u8,
+    pub n: usize,
+    pub x: usize,
+    pub y: usize,
 }
 
 impl Opcode {
@@ -31,9 +31,9 @@ impl Opcode {
             code,
             nnn: code & 0x0FFF,
             nn: (code & 0x00FF) as u8,
-            n: (code & 0x000F) as u8,
-            x: ((code & 0x0F00) >> 8) as u8,
-            y: ((code & 0x00F0) >> 4) as u8
+            n: (code & 0x000F) as usize,
+            x: ((code & 0x0F00) >> 8) as usize,
+            y: ((code & 0x00F0) >> 4) as usize,
         }
     }
 }
@@ -169,13 +169,13 @@ impl Chip8 {
     }
     fn op_3xnn(&mut self, opcode: &Opcode) {
         op_info(self.pc, opcode.code, "3XNN", "Skips the next instruction if VX equals NN. (Usually the next instruction is a jump to skip a code block)");
-        if self.reg[opcode.x as usize] == opcode.nn {
+        if self.reg[opcode.x] == opcode.nn {
             self.pc += 2;
         }
     }
     fn op_4xnn(&mut self, opcode: &Opcode) {
         op_info(self.pc, opcode.code, "4NNN", "Skips the next instruction if VX does not equal NN. (Usually the next instruction is a jump to skip a code block);");
-        if self.reg[opcode.x as usize] != opcode.nn {
+        if self.reg[opcode.x] != opcode.nn {
             self.pc += 2;
         }
     }
@@ -183,10 +183,12 @@ impl Chip8 {
         op_unimplemented(self.pc, opcode.code, "5XY0", "Skips the next instruction if VX equals VY. (Usually the next instruction is a jump to skip a code block);");
     }
     fn op_6xnn(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "6XNN", "Sets VX to NN.");
+        op_info(self.pc, opcode.code, "6XNN", "Sets VX to NN.");
+        self.reg[opcode.x] = opcode.nn;
     }
     fn op_7xnn(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "7XNN", "Adds NN to VX. (Carry flag is not changed);");
+        op_info(self.pc, opcode.code, "7XNN", "Adds NN to VX. (Carry flag is not changed);");
+        self.reg[opcode.x] = self.reg[opcode.x].wrapping_add(opcode.nn);
     }
     fn op_8xy0(&mut self, opcode: &Opcode) {
         op_unimplemented(self.pc, opcode.code, "8XY0", "Sets VX to the value of VY.");
@@ -195,7 +197,8 @@ impl Chip8 {
         op_unimplemented(self.pc, opcode.code, "8XY1", "Sets VX to VX or VY. (Bitwise OR operation);");
     }
     fn op_8xy2(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "8XY2", "Sets VX to VX and VY. (Bitwise AND operation);");
+        op_info(self.pc, opcode.code, "8XY2", "Sets VX to VX and VY. (Bitwise AND operation);");
+        self.reg[opcode.x] &= self.reg[opcode.y];
     }
     fn op_8xy3(&mut self, opcode: &Opcode) {
         op_unimplemented(self.pc, opcode.code, "8XY3", "Sets VX to VX xor VY.");
@@ -219,7 +222,8 @@ impl Chip8 {
         op_unimplemented(self.pc, opcode.code, "9XY0", "Skips the next instruction if VX does not equal VY. (Usually the next instruction is a jump to skip a code block);");
     }
     fn op_annn(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "ANNN", "Sets I to the address NNN.");
+        op_info(self.pc, opcode.code, "ANNN", "Sets I to the address NNN.");
+        self.reg_i = opcode.nnn;
     }
     fn op_bnnn(&mut self, opcode: &Opcode) {
         op_unimplemented(self.pc, opcode.code, "BNNN", "Jumps to the address NNN plus V0.");
@@ -238,7 +242,7 @@ impl Chip8 {
     }
     fn op_fx07(&mut self, opcode: &Opcode) {
         op_info(self.pc, opcode.code, "FX07", "Sets VX to the value of the delay timer.");
-        self.reg[opcode.x as usize] = self.delay_timer;
+        self.reg[opcode.x] = self.delay_timer;
     }
     fn op_fx0a(&mut self, opcode: &Opcode) {
         op_unimplemented(self.pc, opcode.code, "FX0A", "A key press is awaited, and then stored in VX. (Blocking Operation. All instruction halted until next key event);");
@@ -304,6 +308,15 @@ mod tests {
     }
 
     #[test]
+    fn test_op_3xnn_no_skip() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x3AFF, 0x0000, 0x1111]);
+        chip8.reg[0xA] = 0xF0;
+        chip8.tick();
+        assert_ne!(chip8.pc, 0x204);
+    }
+
+    #[test]
     fn test_op_3xnn_skip() {
         let mut chip8 = Chip8::new();
         chip8.load_vec(vec![0x3AFF, 0x0000, 0x1111]);
@@ -331,15 +344,50 @@ mod tests {
     }
 
     #[test]
-    fn test_op_3xnn_no_skip() {
+    fn test_op_6xnn() {
         let mut chip8 = Chip8::new();
-        chip8.load_vec(vec![0x3AFF, 0x0000, 0x1111]);
-        chip8.reg[0xA] = 0xF0;
+        chip8.load_vec(vec![0x6A45]);
         chip8.tick();
-        assert_ne!(chip8.pc, 0x204);
+        assert_eq!(chip8.reg[0xA], 0x45);
     }
 
+    #[test]
+    fn test_op_7xnn_no_wrap() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x7A10]);
+        chip8.reg[0xA] = 0x0F;
+        chip8.tick();
+        assert_eq!(chip8.reg[0xA], 0x0F + 0x10);
+    }
 
+    #[test]
+    fn test_op_7xnn_wrap() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x7A02]);
+        chip8.reg[0xA] = 0xFF;
+        chip8.tick();
+        assert_eq!(chip8.reg[0xA], 0x01);
+        assert_ne!(chip8.reg[0xF], 1);
+    }
+
+    #[test]
+    fn test_op_8xy2() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x8AB2]);
+        chip8.reg[0xA] = 0b11111100;
+        chip8.reg[0xB] = 0b00111111;
+        chip8.tick();
+        assert_eq!(chip8.reg[0xA], 0b00111100);
+        assert_eq!(chip8.reg[0xB], 0b00111111);
+    }
+
+    #[test]
+    fn test_op_annn() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0xa123]);
+        chip8.tick();
+        assert_eq!(chip8.reg_i, 0x123);
+    }
 
     #[test]
     fn test_op_fx07() {
