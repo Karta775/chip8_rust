@@ -2,6 +2,12 @@
 
 This is a CHIP-8 emulator written in Rust as a way of learning Rust & emulation concepts.
 
+### TODO
+* [ ] Move CHIP-8 unit testing to a separate module (?)
+* [ ] Implement all 36 CPU instructions
+* [ ] Add graphics
+* [ ] Add sound
+
 ### Build instructions
 ```shell
 git clone https://github.com/Karta775/chip8_rust
