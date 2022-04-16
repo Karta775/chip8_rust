@@ -266,12 +266,13 @@ mod tests {
     fn test_op_1nnn() {
         let mut chip8 = Chip8::new();
         chip8.load_vec(vec![0x0000, 0x1200, 0x0000]);
+        assert_eq!(chip8.pc, 0x200);
         assert_eq!(chip8.fetch(), 0x0000);
         chip8.tick();
+        assert_eq!(chip8.pc, 0x202);
         assert_eq!(chip8.fetch(), 0x1200);
         chip8.tick();
+        assert_eq!(chip8.pc, 0x200);
         assert_eq!(chip8.fetch(), 0x0000);
-        chip8.tick();
-        assert_eq!(chip8.fetch(), 0x1200);
     }
 }
