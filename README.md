@@ -8,4 +8,10 @@ git clone https://github.com/Karta775/chip8_rust
 cd chip8_rust
 cargo build
 ```
-You must provide a ROM file, currently it's a hard-coded `pong.ch8` in the CWD.
+
+### Usage
+```shell
+cargo test # For unit testing
+cargo run romfile.ch8 # To run normally
+RUST_LOG=debug cargo run romfile.ch8 # To debug
+```
