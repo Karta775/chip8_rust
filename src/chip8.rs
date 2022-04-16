@@ -305,21 +305,16 @@ mod tests {
     #[test]
     fn test_op_1nnn() {
         let mut chip8 = Chip8::new();
-        chip8.load_vec(vec![0x0000, 0x1200, 0x0000]);
+        chip8.load_vec(vec![0x1208]);
         assert_eq!(chip8.pc, 0x200);
-        assert_eq!(chip8.fetch().code, 0x0000);
         chip8.tick();
-        assert_eq!(chip8.pc, 0x202);
-        assert_eq!(chip8.fetch().code, 0x1200);
-        chip8.tick();
-        assert_eq!(chip8.pc, 0x200);
-        assert_eq!(chip8.fetch().code, 0x0000);
+        assert_eq!(chip8.pc, 0x208);
     }
 
     #[test]
     fn test_op_3xnn_skip() {
         let mut chip8 = Chip8::new();
-        chip8.load_vec(vec![0x3AFF, 0x0000, 0x1111]);
+        chip8.load_vec(vec![0x3AFF]);
         chip8.reg[0xA] = 0xFF;
         chip8.tick();
         assert_eq!(chip8.pc, 0x204);
@@ -328,7 +323,7 @@ mod tests {
     #[test]
     fn test_op_3xnn_no_skip() {
         let mut chip8 = Chip8::new();
-        chip8.load_vec(vec![0x3AFF, 0x0000, 0x1111]);
+        chip8.load_vec(vec![0x3AFF]);
         chip8.reg[0xA] = 0xF0;
         chip8.tick();
         assert_ne!(chip8.pc, 0x204);
