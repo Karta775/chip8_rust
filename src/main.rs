@@ -2,6 +2,7 @@ use log::{debug, error, info, warn};
 use std::ptr::null;
 
 mod chip8;
+
 use chip8::Chip8;
 use clap::Parser;
 use sdl2::event::Event;
@@ -61,6 +62,8 @@ fn main() {
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
+        thread::sleep(time::Duration::from_millis(1));
+
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -68,7 +71,24 @@ fn main() {
                     keycode: Some(Keycode::Escape),
                     ..
                 } => break 'running,
-                _ => {}
+                Event::KeyDown { keycode: Some(Keycode::Num1), .. } => keypress = Some(0x1),
+                Event::KeyDown { keycode: Some(Keycode::Num2), .. } => keypress = Some(0x2),
+                Event::KeyDown { keycode: Some(Keycode::Num3), .. } => keypress = Some(0x3),
+                Event::KeyDown { keycode: Some(Keycode::Num4), .. } => keypress = Some(0xC),
+                Event::KeyDown { keycode: Some(Keycode::Q), repeat: true, .. } => keypress = Some(0x4),
+                Event::KeyDown { keycode: Some(Keycode::W), .. } => keypress = Some(0x5),
+                Event::KeyDown { keycode: Some(Keycode::E), .. } => keypress = Some(0x6),
+                Event::KeyDown { keycode: Some(Keycode::R), .. } => keypress = Some(0xD),
+                Event::KeyDown { keycode: Some(Keycode::A), .. } => keypress = Some(0x7),
+                Event::KeyDown { keycode: Some(Keycode::S), .. } => keypress = Some(0x8),
+                Event::KeyDown { keycode: Some(Keycode::D), .. } => keypress = Some(0x9),
+                Event::KeyDown { keycode: Some(Keycode::F), .. } => keypress = Some(0xE),
+                Event::KeyDown { keycode: Some(Keycode::Z), .. } => keypress = Some(0xA),
+                Event::KeyDown { keycode: Some(Keycode::X), .. } => keypress = Some(0x0),
+                Event::KeyDown { keycode: Some(Keycode::C), .. } => keypress = Some(0xB),
+                Event::KeyDown { keycode: Some(Keycode::V), .. } => keypress = Some(0xF),
+                Event::KeyUp { .. } => keypress = None,
+                _ => {},
             }
         }
 
@@ -76,12 +96,16 @@ fn main() {
         if now.elapsed().as_secs() == old_time {
             ops_per_sec += 1;
         } else {
-            warn!("{} instructions per second", ops_per_sec);
+            info!("{} instructions per second", ops_per_sec);
             old_time = now.elapsed().as_secs();
             ops_per_sec = 0;
         }
 
         // Fetch, decode, execute
+        match keypress {
+            Some(key) => info!("Tick with keypress {:#0X}", key),
+            None => {}
+        }
         chip8.tick(keypress);
 
         // Blit the pixels from chip8.display to pixels if the draw flag is set
@@ -93,7 +117,6 @@ fn main() {
             chip8.redraw = false;
         }
 
-        thread::sleep(time::Duration::from_millis(1));
     }
 }
 
