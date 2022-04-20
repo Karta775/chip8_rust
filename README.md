@@ -5,7 +5,7 @@ This is a CHIP-8 emulator written in Rust as a way of learning Rust & emulation 
 ### TODO
 * [ ] Move CHIP-8 unit testing to a separate module (?)
 * [ ] Implement all 36 CPU instructions
-* [ ] Add graphics
+* [x] Add graphics
 * [ ] Add sound
 
 ### Build instructions
