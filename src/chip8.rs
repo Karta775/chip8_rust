@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+#[path = "stack.rs"] mod stack;
+use stack::Stack;
+
 use log::{debug, error, trace, warn};
 use std::fs;
 use std::fs::File;
@@ -27,23 +30,11 @@ const FONT: [u8; 80] = [
 ];
 
 fn op_implemented(pc: usize, opcode: u16, instruction: &str, description: &str) {
-    debug!(
-        "I ({:#04x}) {:04X} | {} - {}",
-        pc - 2,
-        opcode,
-        instruction,
-        description
-    );
+    debug!("I ({:#04x}) {:04X} | {} - {}", pc - 2, opcode, instruction, description);
 }
 
 fn op_unimplemented(pc: usize, opcode: u16, instruction: &str, description: &str) {
-    warn!(
-        "U ({:#04x}) {:04X} | {} - {}",
-        pc - 2,
-        opcode,
-        instruction,
-        description
-    );
+    warn!("U ({:#04x}) {:04X} | {} - {}", pc - 2, opcode, instruction, description);
 }
 
 pub struct Opcode {
@@ -72,6 +63,7 @@ pub struct Chip8 {
     pub pc: usize,
     pub memory: [u8; 4096],
     pub display: [bool; 64 * 32],
+    stack: Stack,
     reg: [u8; 16],
     reg_i: u16,
     delay_timer: u8,
@@ -94,6 +86,7 @@ impl Chip8 {
             pc: 0x200,
             memory,
             display: [false; 64 * 32],
+            stack: Stack::new(),
             reg: [0; 16],
             reg_i: 0,
             delay_timer: 0,
@@ -192,20 +185,25 @@ impl Chip8 {
     }
 
     fn op_0nnn(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "0NNN", "Calls machine code routine (RCA 1802 for COSMAC VIP) at address NNN. Not necessary for most ROMs.");
+        op_implemented(self.pc, opcode.code, "0NNN", "Calls machine code routine (RCA 1802 for COSMAC VIP) at address NNN. Not necessary for most ROMs.");
+        self.pc = opcode.nnn as usize;
     }
     fn op_00e0(&mut self) {
-        op_unimplemented(self.pc, 0x00E0, "00EE", "Clears the screen.");
+        op_implemented(self.pc, 0x00E0, "00EE", "Clears the screen.");
+        self.display.fill(false);
     }
     fn op_00ee(&mut self) {
-        op_unimplemented(self.pc, 0x00EE, "00EE", "Returns from a subroutine.");
+        op_implemented(self.pc, 0x00EE, "00EE", "Returns from a subroutine.");
+        self.pc = self.stack.pop() as usize;
     }
     fn op_1nnn(&mut self, opcode: &Opcode) {
         op_implemented(self.pc, opcode.code, "1NNN", "Jumps to address NNN.");
         self.pc = opcode.nnn as usize;
     }
     fn op_2nnn(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "2NNN", "Calls subroutine at NNN.");
+        op_implemented(self.pc, opcode.code, "2NNN", "Calls subroutine at NNN.");
+        self.stack.push(self.pc as u16);
+        self.pc = opcode.nnn as usize;
     }
     fn op_3xnn(&mut self, opcode: &Opcode) {
         op_implemented(self.pc, opcode.code, "3XNN", "Skips the next instruction if VX equals NN. (Usually the next instruction is a jump to skip a code block)");
@@ -239,7 +237,8 @@ impl Chip8 {
         self.reg[opcode.x] = self.reg[opcode.x].wrapping_add(opcode.nn);
     }
     fn op_8xy0(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "8XY0", "Sets VX to the value of VY.");
+        op_implemented(self.pc, opcode.code, "8XY0", "Sets VX to the value of VY.");
+        self.reg[opcode.x] = self.reg[opcode.y];
     }
     fn op_8xy1(&mut self, opcode: &Opcode) {
         op_unimplemented(
@@ -275,7 +274,12 @@ impl Chip8 {
         self.reg[0xF] = carry as u8;
     }
     fn op_8xy5(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "8XY5", "VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there is not.");
+        op_implemented(self.pc, opcode.code, "8XY5", "VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there is not.");
+        let vx = self.reg[opcode.x];
+        let vy = self.reg[opcode.y];
+        let (result, carry) = vx.overflowing_sub(vy);
+        self.reg[opcode.x] = result;
+        self.reg[0xF] = carry as u8;
     }
     fn op_8xy6(&mut self, opcode: &Opcode) {
         op_unimplemented(
@@ -362,7 +366,8 @@ impl Chip8 {
         self.delay_timer = self.reg[opcode.x];
     }
     fn op_fx18(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "FX18", "Sets the sound timer to VX.");
+        op_implemented(self.pc, opcode.code, "FX18", "Sets the sound timer to VX.");
+        self.sound_timer = self.reg[opcode.x];
     }
     fn op_fx1e(&mut self, opcode: &Opcode) {
         op_unimplemented(
@@ -383,7 +388,10 @@ impl Chip8 {
         op_unimplemented(self.pc, opcode.code, "FX55", "Stores from V0 to VX (including VX) in memory, starting at address I. The offset from I is increased by 1 for each value written, but I itself is left unmodified.");
     }
     fn op_fx65(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "FX65", "Fills from V0 to VX (including VX) with values from memory, starting at address I. The offset from I is increased by 1 for each value written, but I itself is left unmodified.");
+        op_implemented(self.pc, opcode.code, "FX65", "Fills from V0 to VX (including VX) with values from memory, starting at address I. The offset from I is increased by 1 for each value written, but I itself is left unmodified.");
+        for i in 0..=opcode.x {
+            self.reg[i] = self.memory[self.reg_i as usize + i];
+        }
     }
 }
 
@@ -398,7 +406,7 @@ mod tests {
         assert_eq!(chip8.reg_i, 0);
         assert_eq!(chip8.delay_timer, 0);
         assert_eq!(chip8.sound_timer, 0);
-        assert_eq!(chip8.key_press, 0x0);
+        assert_eq!(chip8.keypress, None);
     }
 
     #[test]
@@ -411,12 +419,40 @@ mod tests {
     }
 
     #[test]
+    fn test_op_0nnn() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x0208]);
+        chip8.tick(None);
+        assert_eq!(chip8.pc, 0x208);
+    }
+
+    #[test]
+    fn test_op_00ee() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x00ee]);
+        chip8.stack.push(0x206);
+        assert_eq!(chip8.pc, 0x200);
+        chip8.tick(None);
+        assert_eq!(chip8.pc, 0x206);
+    }
+
+    #[test]
     fn test_op_1nnn() {
         let mut chip8 = Chip8::new();
         chip8.load_vec(vec![0x1208]);
         assert_eq!(chip8.pc, 0x200);
         chip8.tick(None);
         assert_eq!(chip8.pc, 0x208);
+    }
+
+    #[test]
+    fn test_op_2nnn() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x2208]);
+        assert_eq!(chip8.pc, 0x200);
+        chip8.tick(None);
+        assert_eq!(chip8.pc, 0x208);
+        assert_eq!(chip8.stack.pop(), 0x202)
     }
 
     #[test]
@@ -503,6 +539,16 @@ mod tests {
     }
 
     #[test]
+    fn test_op_8xy0() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x8AB0]);
+        chip8.reg[0xA] = 7;
+        chip8.reg[0xB] = 10;
+        chip8.tick(None);
+        assert_eq!(chip8.reg[0xA], 10);
+    }
+
+    #[test]
     fn test_op_8xy2() {
         let mut chip8 = Chip8::new();
         chip8.load_vec(vec![0x8AB2]);
@@ -533,6 +579,30 @@ mod tests {
         chip8.reg[0xB] = 5;
         chip8.tick(None);
         assert_eq!(chip8.reg[0xA], 7);
+        assert_eq!(chip8.reg[0xB], 5);
+        assert_eq!(chip8.reg[0xF], 0)
+    }
+
+    #[test]
+    fn test_op_8xy5_borrow() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x8AB5]);
+        chip8.reg[0xA] = 0;
+        chip8.reg[0xB] = 7;
+        chip8.tick(None);
+        assert_eq!(chip8.reg[0xA], 249);
+        assert_eq!(chip8.reg[0xB], 7);
+        assert_eq!(chip8.reg[0xF], 1)
+    }
+
+    #[test]
+    fn test_op_8xy5_no_borrow() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0x8AB5]);
+        chip8.reg[0xA] = 7;
+        chip8.reg[0xB] = 5;
+        chip8.tick(None);
+        assert_eq!(chip8.reg[0xA], 2);
         assert_eq!(chip8.reg[0xB], 5);
         assert_eq!(chip8.reg[0xF], 0)
     }
@@ -576,11 +646,31 @@ mod tests {
     }
 
     #[test]
+    fn test_op_fx18() {
+        let mut chip8 = Chip8::new();
+        chip8.load_vec(vec![0xFB18]);
+        chip8.reg[0xB] = 53;
+        chip8.tick(None);
+        assert_eq!(chip8.sound_timer, 53);
+    }
+
+    #[test]
     fn test_op_fx29() {
         let mut chip8 = Chip8::new();
         chip8.load_vec(vec![0xFA29]);
         chip8.reg[0xA] = 0xE;
         chip8.tick(None);
         assert_eq!(chip8.reg_i, 70); // 0xE * 5
+    }
+
+    #[test]
+    fn test_op_fx65() {
+        let mut chip8 = Chip8::new();
+        chip8.memory.fill(0xAA);
+        chip8.load_vec(vec![0xF265]);
+        chip8.tick(None);
+        assert_eq!(chip8.reg[0], 0xAA);
+        assert_eq!(chip8.reg[1], 0xAA);
+        assert_eq!(chip8.reg[2], 0xAA);
     }
 }
