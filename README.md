@@ -3,6 +3,9 @@
 This is a CHIP-8 emulator written in Rust as a way of learning Rust & emulation concepts.
 
 ### TODO
+* [ ] Make a debugger
+  * [ ] Use a GUI library like egui (?)
+  * [ ] Use the debugger to fix the Pong issue (paddle position)
 * [ ] Move CHIP-8 unit testing to a separate module (?)
 * [ ] Implement all 36 CPU instructions
 * [x] Add graphics
