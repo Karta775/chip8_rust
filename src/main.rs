@@ -59,6 +59,7 @@ fn main() {
     let now = time::Instant::now();
     let mut old_time = now.elapsed().as_secs();
     let mut ops_per_sec = 0;
+    let mut draw_per_sec = 0;
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
@@ -92,13 +93,16 @@ fn main() {
             }
         }
 
-        // Compute and print the instructions per second TODO: Build into UI (ImGui?)
+        // Compute and print the instructions per second
+        // TODO: Build into UI (ImGui?)
+        // TODO: Compute the average
         if now.elapsed().as_secs() == old_time {
             ops_per_sec += 1;
         } else {
-            info!("{} instructions per second", ops_per_sec);
+            info!("{} instructions per second ({} redraws)", ops_per_sec, draw_per_sec);
             old_time = now.elapsed().as_secs();
             ops_per_sec = 0;
+            draw_per_sec = 0;
         }
 
         // Fetch, decode, execute
@@ -115,6 +119,7 @@ fn main() {
             canvas.copy(&texture, None, None).unwrap();
             canvas.present();
             chip8.redraw = false;
+            draw_per_sec += 1;
         }
 
     }
