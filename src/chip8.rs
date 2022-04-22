@@ -8,6 +8,8 @@ use log::{debug, error, trace, warn};
 use std::fs;
 use std::fs::File;
 use std::io::Read;
+use rand::Rng;
+
 
 const PIXEL_COUNT: usize = 32 * 64 * 3;
 const FONT: [u8; 80] = [
@@ -316,7 +318,9 @@ impl Chip8 {
         );
     }
     fn op_cxnn(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "CXNN", "Sets VX to the result of a bitwise and operation on a random number (Typically: 0 to 255) and NN.");
+        op_implemented(self.pc, opcode.code, "CXNN", "Sets VX to the result of a bitwise and operation on a random number (Typically: 0 to 255) and NN.");
+        let mut rng = rand::thread_rng();
+        self.reg[opcode.x] = rng.gen_range(0..=255) & opcode.nn;
     }
     fn op_dxyn(&mut self, opcode: &Opcode) {
         op_implemented(self.pc, opcode.code, "DXYN","Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels. Each row of 8 pixels is read as bit-coded starting from memory location I; I value does not change after the execution of this instruction. As described above, VF is set to 1 if any screen pixels are flipped from set to unset when the sprite is drawn, and to 0 if that does not happen");
@@ -327,12 +331,13 @@ impl Chip8 {
             for sprite_x in 0..8 {
                 if self.memory[self.reg_i as usize + sprite_y] << sprite_x & 0b10000000 == 128 {
                     let offset = ((vy + sprite_y) * 64) + (vx + sprite_x);
-                    self.reg[0xF] = self.display[offset] as u8; // Set VF
-                    self.display[offset] = !self.display[offset]; // Flip pixel
+                    if offset < 64 * 32 {
+                        self.reg[0xF] = self.display[offset] as u8; // Set VF
+                        self.display[offset] = !self.display[offset]; // Flip pixel
+                    }
                 }
             }
         }
-
         self.redraw = true;
     }
     fn op_ex9e(&mut self, opcode: &Opcode) {
@@ -382,7 +387,13 @@ impl Chip8 {
         self.reg_i = 5 * self.reg[opcode.x] as u16;
     }
     fn op_fx33(&mut self, opcode: &Opcode) {
-        op_unimplemented(self.pc, opcode.code, "FX33", "Stores the binary-coded decimal representation of VX, with the most significant of three digits at the address in I, the middle digit at I plus 1, and the least significant digit at I plus 2. (In other words, take the decimal representation of VX, place the hundreds digit in memory at location in I, the tens digit at location I+1, and the ones digit at location I+2.);");
+        op_implemented(self.pc, opcode.code, "FX33", "Stores the binary-coded decimal representation of VX, with the most significant of three digits at the address in I, the middle digit at I plus 1, and the least significant digit at I plus 2. (In other words, take the decimal representation of VX, place the hundreds digit in memory at location in I, the tens digit at location I+1, and the ones digit at location I+2.);");
+        let hundreds = self.reg[opcode.x] / 100 % 10;
+        let tens = self.reg[opcode.x] / 10 % 10;
+        let ones = self.reg[opcode.x] % 10;
+        self.memory[self.reg_i as usize] = hundreds;
+        self.memory[self.reg_i as usize + 1] = tens;
+        self.memory[self.reg_i as usize + 2] = ones;
     }
     fn op_fx55(&mut self, opcode: &Opcode) {
         op_unimplemented(self.pc, opcode.code, "FX55", "Stores from V0 to VX (including VX) in memory, starting at address I. The offset from I is increased by 1 for each value written, but I itself is left unmodified.");
