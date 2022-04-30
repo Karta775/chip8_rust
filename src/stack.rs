@@ -33,13 +33,21 @@ impl Stack {
             process::exit(1);
         }
     }
-    fn is_full(&self) -> bool {
+    pub fn top(&self) -> u16 {
+        if self.is_empty() == false {
+            self.stack[self.top as usize]
+        } else {
+            eprintln!("Error: stack is empty and cannot pop");
+            process::exit(1);
+        }
+    }
+    pub fn is_full(&self) -> bool {
         match self.top {
             31 => true,
             _ => false,
         }
     }
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         match self.top {
             -1 => true,
             _ => false,

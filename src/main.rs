@@ -1,19 +1,16 @@
-use log::{debug, error, info, warn};
-use std::ptr::null;
-
 mod chip8;
+mod app;
 
-use chip8::Chip8;
+use std::fmt::format;
+use macroquad::prelude::*;
 use clap::Parser;
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
-use sdl2::pixels::{Color, PixelFormatEnum};
-use sdl2::render::TextureAccess;
+use egui::{Slider, Ui};
+use egui::Color32;
+use egui::RichText;
+use chip8::Chip8;
+use app::App;
 use std::time::Duration;
 use std::{thread, time};
-
-const WIDTH: u32 = 640;
-const HEIGHT: u32 = 320;
 
 /// CHIP-8 Emulator
 #[derive(Parser, Debug)]
@@ -24,26 +21,23 @@ struct Args {
     romfile: String,
 }
 
-fn main() {
-    // SDL Init
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
-    let window = video_subsystem
-        .window("CHIP-8", 640, 320)
-        .position_centered()
-        .build()
-        .unwrap();
-    let mut canvas = window.into_canvas().build().unwrap();
-    let texture_creator = canvas.texture_creator();
-    let mut texture_data: [u8; 64 * 32 * 4] = [0; 64 * 32 * 4];
-    let mut texture = texture_creator
-        .create_texture(PixelFormatEnum::ARGB8888, TextureAccess::Streaming, 64, 32)
-        .unwrap();
+pub struct Environment {
 
-    canvas.set_draw_color(Color::RGB(0, 0, 0));
-    canvas.clear();
-    canvas.present();
+}
 
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "CHIP-8".to_owned(),
+        high_dpi: true,
+        window_resizable: true,
+        window_width: 960,
+        window_height: 600,
+        ..Default::default()
+    }
+}
+
+#[macroquad::main(window_conf)]
+async fn main() {
     // Parse command line arguments
     let args = Args::parse();
 
@@ -52,85 +46,111 @@ fn main() {
 
     // Set up CHIP-8 and load the ROM
     let mut keypress: Option<u8> = None;
-    let mut chip8 = Chip8::new();
-    chip8.load_rom(&args.romfile);
+    let mut app = App::new();
+    app.chip8.load_rom(&args.romfile);
 
-    // Set up timer
-    let now = time::Instant::now();
-    let mut old_time = now.elapsed().as_secs();
-    let mut ops_per_sec = 0;
-    let mut draw_per_sec = 0;
+    // Set up texture for macroquad
+    let mut texture = pixels_to_texture2d(&app.chip8.display, &app.fg_color, &app.bg_color);
+    texture.set_filter(FilterMode::Nearest);
 
-    let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
-        thread::sleep(time::Duration::from_millis(1));
+        egui_macroquad::ui(|egui_ctx| {
+            setup_custom_fonts(&egui_ctx);
+            app.show_main_menubar(&egui_ctx);
+            app.show_general_state(&egui_ctx);
+            app.show_controls(&egui_ctx);
+        });
 
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'running,
-                Event::KeyDown { keycode: Some(Keycode::Num1), .. } => keypress = Some(0x1),
-                Event::KeyDown { keycode: Some(Keycode::Num2), .. } => keypress = Some(0x2),
-                Event::KeyDown { keycode: Some(Keycode::Num3), .. } => keypress = Some(0x3),
-                Event::KeyDown { keycode: Some(Keycode::Num4), .. } => keypress = Some(0xC),
-                Event::KeyDown { keycode: Some(Keycode::Q), repeat: true, .. } => keypress = Some(0x4),
-                Event::KeyDown { keycode: Some(Keycode::W), .. } => keypress = Some(0x5),
-                Event::KeyDown { keycode: Some(Keycode::E), .. } => keypress = Some(0x6),
-                Event::KeyDown { keycode: Some(Keycode::R), .. } => keypress = Some(0xD),
-                Event::KeyDown { keycode: Some(Keycode::A), .. } => keypress = Some(0x7),
-                Event::KeyDown { keycode: Some(Keycode::S), .. } => keypress = Some(0x8),
-                Event::KeyDown { keycode: Some(Keycode::D), .. } => keypress = Some(0x9),
-                Event::KeyDown { keycode: Some(Keycode::F), .. } => keypress = Some(0xE),
-                Event::KeyDown { keycode: Some(Keycode::Z), .. } => keypress = Some(0xA),
-                Event::KeyDown { keycode: Some(Keycode::X), .. } => keypress = Some(0x0),
-                Event::KeyDown { keycode: Some(Keycode::C), .. } => keypress = Some(0xB),
-                Event::KeyDown { keycode: Some(Keycode::V), .. } => keypress = Some(0xF),
-                Event::KeyUp { .. } => keypress = None,
-                _ => {},
+        // If not paused or paused but step requested
+        if !app.pause_execution || (app.pause_execution && app.step) {
+            if !app.pause_execution { // Execute normally
+                for i in 0..app.speed {
+                    app.chip8.tick(keypress);
+                    app.ops_per_sec += 1;
+                }
+            } else { // Step requested
+                app.chip8.tick(keypress);
             }
+            if app.chip8.redraw {
+                texture = pixels_to_texture2d(&app.chip8.display, &app.fg_color, &app.bg_color);
+                app.chip8.redraw = false;
+                app.draw_per_sec += 1;
+            }
+            app.step = false;
         }
 
-        // Compute and print the instructions per second
-        // TODO: Build into UI (ImGui?)
-        // TODO: Compute the average
-        if now.elapsed().as_secs() == old_time {
-            ops_per_sec += 1;
-        } else {
-            info!("{} instructions per second ({} redraws)", ops_per_sec, draw_per_sec);
-            old_time = now.elapsed().as_secs();
-            ops_per_sec = 0;
-            draw_per_sec = 0;
-        }
-
-        // Fetch, decode, execute
-        match keypress {
-            Some(key) => info!("Tick with keypress {:#0X}", key),
-            None => {}
-        }
-        chip8.tick(keypress);
-
-        // Blit the pixels from chip8.display to pixels if the draw flag is set
-        if chip8.redraw {
-            blit(&chip8.display, &mut texture_data);
-            texture.update(None, &texture_data, 64 * 4).unwrap();
-            canvas.copy(&texture, None, None).unwrap();
-            canvas.present();
-            chip8.redraw = false;
-            draw_per_sec += 1;
-        }
-
+        // Render everything
+        clear_background(BLACK);
+        set_camera(&Camera2D {
+            zoom: vec2(26.0 / screen_width(), 26.0 / screen_height()),
+            target: vec2(32., 16.),
+            ..Default::default()
+        });
+        draw_rectangle(-1., -1., 66., 34., GRAY);
+        draw_texture_ex(texture,
+                        0.0,
+                        0.0,
+                        WHITE,
+                        DrawTextureParams{
+                            dest_size: None,
+                            source: None,
+                            rotation: 0.0,
+                            flip_x: false,
+                            flip_y: true,
+                            pivot: None
+                        }
+        );
+        egui_macroquad::draw();
+        next_frame().await
     }
 }
 
-fn blit(pixels: &[bool; 64 * 32], texture_data: &mut [u8; 64 * 32 * 4]) {
+fn debug_label(ui: &mut Ui, title: &str, body: &str, color: Color32) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(title).color(color));
+        ui.label(body);
+    });
+}
+
+fn pixels_to_texture2d(pixels: &[bool; 64 * 32], fg_color: &[f32;3], bg_color: &[f32;3]) -> Texture2D {
+    let mut bytes: Vec<u8> = Vec::from([0;8192]);
     for i in 0..pixels.len() {
         let offset = i * 4;
-        texture_data[offset + 0] = if pixels[i] { 255 } else { 0 };
-        texture_data[offset + 1] = if pixels[i] { 255 } else { 0 };
-        texture_data[offset + 2] = if pixels[i] { 255 } else { 0 };
-        texture_data[offset + 3] = 255;
+        bytes[offset + 0] = if pixels[i] { (fg_color[0] * 255.) as u8 } else { (bg_color[0] * 255.) as u8 };
+        bytes[offset + 1] = if pixels[i] { (fg_color[1] * 255.) as u8 } else { (bg_color[1] * 255.) as u8 };
+        bytes[offset + 2] = if pixels[i] { (fg_color[2] * 255.) as u8 } else { (bg_color[2] * 255.) as u8 };
+        bytes[offset + 3] = 255;
     }
+    let texture = Texture2D::from_rgba8(64, 32, &bytes);
+    texture.set_filter(FilterMode::Nearest);
+    texture
+}
+
+fn setup_custom_fonts(ctx: &egui::Context) {
+    // Start with the default fonts (we will be adding to them rather than replacing them).
+    let mut fonts = egui::FontDefinitions::default();
+
+    // Install my own font (maybe supporting non-latin characters).
+    // .ttf and .otf files supported.
+    fonts.font_data.insert(
+        "JetBrains Mono".to_owned(),
+        egui::FontData::from_static(include_bytes!("../JetBrainsMono-Regular.ttf")),
+    );
+
+    // Put my font first (highest priority) for proportional text:
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "JetBrains Mono".to_owned());
+
+    // Put my font as last fallback for monospace:
+    fonts
+        .families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .push("JetBrains Mono".to_owned());
+
+    // Tell egui to use these fonts:
+    ctx.set_fonts(fonts);
 }
