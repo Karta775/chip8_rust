@@ -15,6 +15,8 @@ pub struct App {
     pub fg_color: [f32;3],
     pub bg_color: [f32;3],
     bold_text_color: Color32,
+    reg_read_color: Color32,
+    reg_write_color: Color32,
     now: Instant,
     old_time: u64,
     pub ops_per_sec: u32,
@@ -34,6 +36,8 @@ impl App {
             fg_color: [1.;3],
             bg_color: [0.;3],
             bold_text_color: Color32::from_rgb(110, 255, 110),
+            reg_read_color: Color32::from_rgb(110, 110, 255),
+            reg_write_color: Color32::from_rgb(255, 110, 110),
             now,
             old_time: now.elapsed().as_secs(),
             ops_per_sec: 0,
@@ -127,46 +131,21 @@ impl App {
             ui.label(format!("Redraw/s: {}", self.draw_last_sec));
             ui.separator();
             ui.label(RichText::new("Registers:").color(self.bold_text_color));
-            ui.horizontal_wrapped(|ui| { // TODO: Do this programmatically
-                ui.label(RichText::new("0:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0x0]));
-                ui.label(RichText::new("1:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0x1]));
-                ui.label(RichText::new("2:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0x2]));
-                ui.label(RichText::new("3:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0x3]));
-            });
-            ui.horizontal_wrapped(|ui| {
-                ui.label(RichText::new("4:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0x4]));
-                ui.label(RichText::new("5:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0x5]));
-                ui.label(RichText::new("6:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0x6]));
-                ui.label(RichText::new("7:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0x7]));
-            });
-            ui.horizontal_wrapped(|ui| {
-                ui.label(RichText::new("8:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0x8]));
-                ui.label(RichText::new("9:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0x9]));
-                ui.label(RichText::new("A:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0xA]));
-                ui.label(RichText::new("B:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0xB]));
-            });
-            ui.horizontal_wrapped(|ui| {
-                ui.label(RichText::new("C:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0xC]));
-                ui.label(RichText::new("D:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0xD]));
-                ui.label(RichText::new("E:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0xE]));
-                ui.label(RichText::new("F:").color(self.bold_text_color));
-                ui.label(format!("{:02X} ", self.chip8.reg[0xF]));
-            });
+            for i in (0x0..=0xF).step_by(4) {
+                ui.horizontal_wrapped(|ui| {
+                    for j in 0..4 {
+                        let reg = i + j;
+                        let mut reg_color = self.bold_text_color;
+                        if self.chip8.reg_read.contains(&reg) {
+                            reg_color = self.reg_read_color;
+                        } else if self.chip8.reg_write.contains(&reg) {
+                            reg_color = self.reg_write_color;
+                        }
+                        ui.label(RichText::new(format!("{:0X}:", reg)).color(reg_color));
+                        ui.label(format!("{:02X} ", self.chip8.reg[reg]));
+                    }
+                });
+            }
         });
     }
 

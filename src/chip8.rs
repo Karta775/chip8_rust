@@ -73,6 +73,8 @@ pub struct Chip8 {
     pub keypress: Option<u8>,
     pub pixels: [u8; PIXEL_COUNT],
     pub redraw: bool,
+    pub reg_read: Vec<usize>,
+    pub reg_write: Vec<usize>,
 }
 
 impl Chip8 {
@@ -97,6 +99,8 @@ impl Chip8 {
             keypress: None,
             pixels: [0; PIXEL_COUNT],
             redraw: false,
+            reg_read: Vec::new(),
+            reg_write: Vec::new(),
         }
     }
 
@@ -116,6 +120,8 @@ impl Chip8 {
         self.keypress = None;
         self.pixels = [0;PIXEL_COUNT];
         self.redraw = false;
+        self.reg_read.clear();
+        self.reg_write.clear();
     }
 
     pub fn load_rom(&mut self, filename: &str) {
@@ -145,8 +151,9 @@ impl Chip8 {
     }
 
     pub fn tick(&mut self, keypress: Option<u8>) {
-        //let opcode = self.fetch();
-        self.opcode = self.fetch(); // TODO: Change everything to use this self.opcode
+        if !self.reg_read.is_empty() { self.reg_read.clear() };
+        if !self.reg_write.is_empty() { self.reg_write.clear() };
+        self.opcode = self.fetch();
         self.pc += 2;
         if self.delay_timer > 0 { self.delay_timer -= 1 };
         if self.sound_timer > 0 { self.sound_timer -= 1 };
@@ -229,24 +236,29 @@ impl Chip8 {
     }
     fn op_3xnn(&mut self) {
         op_implemented(self.pc, self.opcode.code, "3XNN", "Skips the next instruction if VX equals NN. (Usually the next instruction is a jump to skip a code block)");
+        self.reg_read.push(self.opcode.x);
         if self.reg[self.opcode.x] == self.opcode.nn {
             self.pc += 2;
         }
     }
     fn op_4xnn(&mut self) {
         op_implemented(self.pc, self.opcode.code, "4NNN", "Skips the next instruction if VX does not equal NN. (Usually the next instruction is a jump to skip a code block);");
+        self.reg_read.push(self.opcode.x);
         if self.reg[self.opcode.x] != self.opcode.nn {
             self.pc += 2;
         }
     }
     fn op_5xy0(&mut self) {
         op_implemented(self.pc, self.opcode.code, "5XY0", "Skips the next instruction if VX equals VY. (Usually the next instruction is a jump to skip a code block);");
+        self.reg_read.push(self.opcode.x);
+        self.reg_read.push(self.opcode.y);
         if self.reg[self.opcode.x] == self.reg[self.opcode.y] {
             self.pc += 2;
         }
     }
     fn op_6xnn(&mut self) {
         op_implemented(self.pc, self.opcode.code, "6XNN", "Sets VX to NN.");
+        self.reg_write.push(self.opcode.x);
         self.reg[self.opcode.x] = self.opcode.nn;
     }
     fn op_7xnn(&mut self) {
@@ -256,10 +268,13 @@ impl Chip8 {
             "7XNN",
             "Adds NN to VX. (Carry flag is not changed);",
         );
+        self.reg_write.push(self.opcode.x);
         self.reg[self.opcode.x] = self.reg[self.opcode.x].wrapping_add(self.opcode.nn);
     }
     fn op_8xy0(&mut self) {
         op_implemented(self.pc, self.opcode.code, "8XY0", "Sets VX to the value of VY.");
+        self.reg_write.push(self.opcode.x);
+        self.reg_read.push(self.opcode.y);
         self.reg[self.opcode.x] = self.reg[self.opcode.y];
     }
     fn op_8xy1(&mut self) {
@@ -277,6 +292,8 @@ impl Chip8 {
             "8XY2",
             "Sets VX to VX and VY. (Bitwise AND operation);",
         );
+        self.reg_read.push(self.opcode.y);
+        self.reg_write.push(self.opcode.x);
         self.reg[self.opcode.x] &= self.reg[self.opcode.y];
     }
     fn op_8xy3(&mut self) {
@@ -289,19 +306,25 @@ impl Chip8 {
             "8XY4",
             "Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there is not.",
         );
+        self.reg_read.push(self.opcode.y);
+        self.reg_write.push(self.opcode.x);
         let vx = self.reg[self.opcode.x];
         let vy = self.reg[self.opcode.y];
         let (result, carry) = vx.overflowing_add(vy);
         self.reg[self.opcode.x] = result;
         self.reg[0xF] = carry as u8;
+        if carry { self.reg_write.push(0xF) };
     }
     fn op_8xy5(&mut self) {
         op_implemented(self.pc, self.opcode.code, "8XY5", "VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there is not.");
+        self.reg_read.push(self.opcode.y);
+        self.reg_write.push(self.opcode.x);
         let vx = self.reg[self.opcode.x];
         let vy = self.reg[self.opcode.y];
         let (result, carry) = vx.overflowing_sub(vy);
         self.reg[self.opcode.x] = result;
         self.reg[0xF] = carry as u8;
+        if carry { self.reg_write.push(0xF) };
     }
     fn op_8xy6(&mut self) {
         op_unimplemented(
@@ -339,11 +362,14 @@ impl Chip8 {
     }
     fn op_cxnn(&mut self) {
         op_implemented(self.pc, self.opcode.code, "CXNN", "Sets VX to the result of a bitwise and operation on a random number (Typically: 0 to 255) and NN.");
+        self.reg_write.push(self.opcode.x);
         let mut rng = rand::thread_rng();
         self.reg[self.opcode.x] = rng.gen_range(0..=255) & self.opcode.nn;
     }
     fn op_dxyn(&mut self) {
         op_implemented(self.pc, self.opcode.code, "DXYN","Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels. Each row of 8 pixels is read as bit-coded starting from memory location I; I value does not change after the execution of this instruction. As described above, VF is set to 1 if any screen pixels are flipped from set to unset when the sprite is drawn, and to 0 if that does not happen");
+        self.reg_read.push(self.opcode.y);
+        self.reg_read.push(self.opcode.x);
         let vx = self.reg[self.opcode.x] as usize;
         let vy = self.reg[self.opcode.y] as usize;
 
@@ -365,6 +391,7 @@ impl Chip8 {
     }
     fn op_exa1(&mut self) {
         op_implemented(self.pc, self.opcode.code, "EXA1", "Skips the next instruction if the key stored in VX is not pressed. (Usually the next instruction is a jump to skip a code block);");
+        self.reg_read.push(self.opcode.x);
         match self.keypress {
             Some(key) => {
                 if key != self.reg[self.opcode.x] {
@@ -381,6 +408,7 @@ impl Chip8 {
             "FX07",
             "Sets VX to the value of the delay timer.",
         );
+        self.reg_write.push(self.opcode.x);
         self.reg[self.opcode.x] = self.delay_timer;
     }
     fn op_fx0a(&mut self) {
@@ -388,10 +416,12 @@ impl Chip8 {
     }
     fn op_fx15(&mut self) {
         op_implemented(self.pc, self.opcode.code, "FX15", "Sets the delay timer to VX.");
+        self.reg_read.push(self.opcode.x);
         self.delay_timer = self.reg[self.opcode.x];
     }
     fn op_fx18(&mut self) {
         op_implemented(self.pc, self.opcode.code, "FX18", "Sets the sound timer to VX.");
+        self.reg_read.push(self.opcode.x);
         self.sound_timer = self.reg[self.opcode.x];
     }
     fn op_fx1e(&mut self) {
@@ -404,10 +434,12 @@ impl Chip8 {
     }
     fn op_fx29(&mut self) {
         op_implemented(self.pc, self.opcode.code, "FX29", "Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font.");
+        self.reg_read.push(self.opcode.x);
         self.reg_i = 5 * self.reg[self.opcode.x] as u16;
     }
     fn op_fx33(&mut self) {
         op_implemented(self.pc, self.opcode.code, "FX33", "Stores the binary-coded decimal representation of VX, with the most significant of three digits at the address in I, the middle digit at I plus 1, and the least significant digit at I plus 2. (In other words, take the decimal representation of VX, place the hundreds digit in memory at location in I, the tens digit at location I+1, and the ones digit at location I+2.);");
+        self.reg_read.push(self.opcode.x);
         let hundreds = self.reg[self.opcode.x] / 100 % 10;
         let tens = self.reg[self.opcode.x] / 10 % 10;
         let ones = self.reg[self.opcode.x] % 10;
@@ -420,6 +452,7 @@ impl Chip8 {
     }
     fn op_fx65(&mut self) {
         op_implemented(self.pc, self.opcode.code, "FX65", "Fills from V0 to VX (including VX) with values from memory, starting at address I. The offset from I is increased by 1 for each value written, but I itself is left unmodified.");
+        self.reg_write = vec![0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]; // TODO: Find a way to do with programmatically
         for i in 0..=self.opcode.x {
             self.reg[i] = self.memory[self.reg_i as usize + i];
         }
