@@ -9,6 +9,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Read;
 use rand::Rng;
+use rand::rngs::ThreadRng;
 
 const PIXEL_COUNT: usize = 32 * 64 * 3;
 const FONT: [u8; 80] = [
@@ -73,6 +74,7 @@ pub struct Chip8 {
     pub keypress: Option<u8>,
     pub pixels: [u8; PIXEL_COUNT],
     pub redraw: bool,
+    pub rng: ThreadRng,
     pub reg_read: Vec<usize>,
     pub reg_write: Vec<usize>,
 }
@@ -99,6 +101,7 @@ impl Chip8 {
             keypress: None,
             pixels: [0; PIXEL_COUNT],
             redraw: false,
+            rng: rand::thread_rng(),
             reg_read: Vec::new(),
             reg_write: Vec::new(),
         }
@@ -323,8 +326,8 @@ impl Chip8 {
         let vy = self.reg[self.opcode.y];
         let (result, carry) = vx.overflowing_sub(vy);
         self.reg[self.opcode.x] = result;
-        self.reg[0xF] = carry as u8;
-        if carry { self.reg_write.push(0xF) };
+        self.reg[0xF] = !carry as u8;
+        if !carry { self.reg_write.push(0xF) };
     }
     fn op_8xy6(&mut self) {
         op_unimplemented(
@@ -363,8 +366,7 @@ impl Chip8 {
     fn op_cxnn(&mut self) {
         op_implemented(self.pc, self.opcode.code, "CXNN", "Sets VX to the result of a bitwise and operation on a random number (Typically: 0 to 255) and NN.");
         self.reg_write.push(self.opcode.x);
-        let mut rng = rand::thread_rng();
-        self.reg[self.opcode.x] = rng.gen_range(0..=255) & self.opcode.nn;
+        self.reg[self.opcode.x] = self.rng.gen_range(0..=255) & self.opcode.nn;
     }
     fn op_dxyn(&mut self) {
         op_implemented(self.pc, self.opcode.code, "DXYN","Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels. Each row of 8 pixels is read as bit-coded starting from memory location I; I value does not change after the execution of this instruction. As described above, VF is set to 1 if any screen pixels are flipped from set to unset when the sprite is drawn, and to 0 if that does not happen");
@@ -656,7 +658,7 @@ mod tests {
         chip8.tick(None);
         assert_eq!(chip8.reg[0xA], 249);
         assert_eq!(chip8.reg[0xB], 7);
-        assert_eq!(chip8.reg[0xF], 1)
+        assert_eq!(chip8.reg[0xF], 0)
     }
 
     #[test]
@@ -668,7 +670,7 @@ mod tests {
         chip8.tick(None);
         assert_eq!(chip8.reg[0xA], 2);
         assert_eq!(chip8.reg[0xB], 5);
-        assert_eq!(chip8.reg[0xF], 0)
+        assert_eq!(chip8.reg[0xF], 1)
     }
 
     #[test]
