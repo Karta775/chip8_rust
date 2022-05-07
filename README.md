@@ -2,7 +2,8 @@
 
 This is a CHIP-8 emulator written in Rust as a way of learning Rust & emulation concepts.
 
-![](img/screen_ibm.png)
+<!-- ![](img/screen_ibm.png) -->
+![chip8_rust playing pong](img/pong.gif)
 
 ### TODO
 * [x] Make a debugger
