@@ -1,4 +1,4 @@
-# chip8_rust
+# chip8_rust 👾
 
 This is a CHIP-8 emulator written in Rust as a way of learning Rust & emulation concepts.
 
