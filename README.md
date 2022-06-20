@@ -14,6 +14,8 @@ This is a CHIP-8 emulator written in Rust as a way of learning Rust & emulation 
 * [ ] Implement all 36 CPU instructions
 * [x] Add graphics
 * [ ] Add sound
+* [ ] Fix the file dialog crashing on macOS (rfd)
+* [ ] Fix the non-functional debug information
 
 ### Build instructions
 ```shell
